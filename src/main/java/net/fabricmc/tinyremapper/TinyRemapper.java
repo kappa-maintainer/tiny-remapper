@@ -57,6 +57,7 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
+import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.RecordComponentVisitor;
@@ -67,9 +68,11 @@ import net.fabricmc.tinyremapper.IMappingProvider.MappingAcceptor;
 import net.fabricmc.tinyremapper.IMappingProvider.Member;
 import net.fabricmc.tinyremapper.api.TrClass;
 import net.fabricmc.tinyremapper.api.TrEnvironment;
+import net.fabricmc.tinyremapper.api.TrLocal;
 import net.fabricmc.tinyremapper.api.TrLogger;
 import net.fabricmc.tinyremapper.api.TrMember;
 import net.fabricmc.tinyremapper.api.TrMember.MemberType;
+import net.fabricmc.tinyremapper.extension.mixin.common.data.Constant;
 
 public class TinyRemapper {
 	public static class Builder {
@@ -183,6 +186,14 @@ public class TinyRemapper {
 			return this;
 		}
 
+		/**
+		 * Whether to disable the tracking of local variable names, used in ModifyVariable local name remapping.
+		 */
+		public Builder disableLocalVariableTracking(boolean value) {
+			this.disableLocalVariableTracking = value;
+			return this;
+		}
+
 		@Deprecated
 		public Builder extraAnalyzeVisitor(ClassVisitor visitor) {
 			return extraAnalyzeVisitor((mrjVersion, className, next) -> {
@@ -233,7 +244,7 @@ public class TinyRemapper {
 					propagateBridges, propagateRecordComponents,
 					removeFrames, ignoreConflicts, resolveMissing, checkPackageAccess || fixPackageAccess, fixPackageAccess,
 					rebuildSourceFilenames, skipLocalMapping, renameInvalidLocals, invalidLvNamePattern, inferNameFromSameLvIndex,
-					analyzeVisitors, stateProcessors, preApplyVisitors, postApplyVisitors,
+					disableLocalVariableTracking || skipLocalMapping, analyzeVisitors, stateProcessors, preApplyVisitors, postApplyVisitors,
 					extraRemapper, logger);
 
 			return remapper;
@@ -258,6 +269,7 @@ public class TinyRemapper {
 		private boolean renameInvalidLocals = false;
 		private Pattern invalidLvNamePattern;
 		private boolean inferNameFromSameLvIndex;
+		private boolean disableLocalVariableTracking = false;
 		private final List<AnalyzeVisitorProvider> analyzeVisitors = new ArrayList<>();
 		private final List<StateProcessor> stateProcessors = new ArrayList<>();
 		private final List<ApplyVisitorProvider> preApplyVisitors = new ArrayList<>();
@@ -321,6 +333,7 @@ public class TinyRemapper {
 			boolean rebuildSourceFilenames,
 			boolean skipLocalMapping,
 			boolean renameInvalidLocals, Pattern invalidLvNamePattern, boolean inferNameFromSameLvIndex,
+			boolean disableLocalVariableTracking,
 			List<AnalyzeVisitorProvider> analyzeVisitors, List<StateProcessor> stateProcessors,
 			List<ApplyVisitorProvider> preApplyVisitors, List<ApplyVisitorProvider> postApplyVisitors,
 			Remapper extraRemapper, TrLogger logger) {
@@ -345,6 +358,7 @@ public class TinyRemapper {
 		this.renameInvalidLocals = renameInvalidLocals;
 		this.invalidLvNamePattern = invalidLvNamePattern;
 		this.inferNameFromSameLvIndex = inferNameFromSameLvIndex;
+		this.disableLocalVariableTracking = disableLocalVariableTracking;
 		this.analyzeVisitors = analyzeVisitors;
 		this.stateProcessors = stateProcessors;
 		this.preApplyVisitors = preApplyVisitors;
@@ -643,10 +657,29 @@ public class TinyRemapper {
 
 			@Override
 			public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
-				MemberInstance prev = ret.addMember(new MemberInstance(TrMember.MemberType.METHOD, ret, name, desc, access, ret.getMembers().size()));
+				MemberInstance member = new MemberInstance(MemberType.METHOD, ret, name, desc, access, ret.getMembers().size());
+				MemberInstance prev = ret.addMember(member);
 				if (prev != null) throw new RuntimeException(String.format("duplicate method %s/%s%s in inputs", ret.getName(), name, desc));
 
-				return super.visitMethod(access, name, desc, signature, exceptions);
+				if (TinyRemapper.this.disableLocalVariableTracking) {
+					return super.visitMethod(access, name, desc, signature, exceptions);
+				} else {
+					return new MethodVisitor(Constant.ASM_VERSION, super.visitMethod(access, name, desc, signature, exceptions)) {
+						final List<TrLocal> locals = new ArrayList<>();
+
+						@Override
+						public void visitLocalVariable(String name, String descriptor, String signature, Label start, Label end, int index) {
+							this.locals.add(new LocalInstance(member, name, descriptor, index));
+							super.visitLocalVariable(name, descriptor, signature, start, end, index);
+						}
+
+						@Override
+						public void visitEnd() {
+							member.setLocals(locals.toArray(new TrLocal[0]));
+							super.visitEnd();
+						}
+					};
+				}
 			}
 
 			@Override
@@ -662,7 +695,11 @@ public class TinyRemapper {
 			cv = analyzeVisitors.get(i).insertAnalyzeVisitor(isInput, mrjVersion, name, cv, tags);
 		}
 
-		reader.accept(cv, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES | ClassReader.SKIP_CODE);
+		if (this.disableLocalVariableTracking) {
+			reader.accept(cv, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES | ClassReader.SKIP_CODE);
+		} else {
+			reader.accept(cv, ClassReader.SKIP_FRAMES);
+		}
 
 		return ret;
 	}
@@ -1454,6 +1491,7 @@ public class TinyRemapper {
 	private final boolean renameInvalidLocals;
 	private final Pattern invalidLvNamePattern;
 	private final boolean inferNameFromSameLvIndex;
+	private final boolean disableLocalVariableTracking;
 	private final List<AnalyzeVisitorProvider> analyzeVisitors;
 	private final List<StateProcessor> stateProcessors;
 	private final List<ApplyVisitorProvider> preApplyVisitors;
