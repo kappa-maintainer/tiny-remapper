@@ -120,6 +120,11 @@ public class TinyRemapper {
 			return this;
 		}
 
+		public Builder propagateUnmappedSuper(boolean value) {
+			propagateUnmappedSuper = value;
+			return this;
+		}
+
 		public Builder propagateBridges(LinkedMethodPropagation value) {
 			propagateBridges = value;
 			return this;
@@ -238,16 +243,15 @@ public class TinyRemapper {
 		}
 
 		public TinyRemapper build() {
-			TinyRemapper remapper = new TinyRemapper(mappingProviders, ignoreFieldDesc, threadCount,
+
+			return new TinyRemapper(mappingProviders, ignoreFieldDesc, threadCount,
 					keepInputData,
-					forcePropagation, knownIndyBsm, propagatePrivate,
+					forcePropagation, knownIndyBsm, propagatePrivate, propagateUnmappedSuper,
 					propagateBridges, propagateRecordComponents,
 					removeFrames, ignoreConflicts, resolveMissing, checkPackageAccess || fixPackageAccess, fixPackageAccess,
 					rebuildSourceFilenames, skipLocalMapping, renameInvalidLocals, invalidLvNamePattern, inferNameFromSameLvIndex,
 					disableLocalVariableTracking || skipLocalMapping, analyzeVisitors, stateProcessors, preApplyVisitors, postApplyVisitors,
 					extraRemapper, logger);
-
-			return remapper;
 		}
 
 		private final Set<IMappingProvider> mappingProviders = new HashSet<>();
@@ -257,6 +261,7 @@ public class TinyRemapper {
 		private final Set<String> knownIndyBsm = new HashSet<>();
 		private boolean keepInputData = false;
 		private boolean propagatePrivate = false;
+		private boolean propagateUnmappedSuper = false;
 		private LinkedMethodPropagation propagateBridges = LinkedMethodPropagation.DISABLED;
 		private LinkedMethodPropagation propagateRecordComponents = LinkedMethodPropagation.DISABLED;
 		private boolean removeFrames = false;
@@ -323,7 +328,7 @@ public class TinyRemapper {
 	private TinyRemapper(Collection<IMappingProvider> mappingProviders, boolean ignoreFieldDesc,
 			int threadCount,
 			boolean keepInputData,
-			Set<String> forcePropagation, Set<String> knownIndyBsm, boolean propagatePrivate,
+			Set<String> forcePropagation, Set<String> knownIndyBsm, boolean propagatePrivate, boolean propagateUnmappedSuper,
 			LinkedMethodPropagation propagateBridges, LinkedMethodPropagation propagateRecordComponents,
 			boolean removeFrames,
 			boolean ignoreConflicts,
@@ -346,6 +351,7 @@ public class TinyRemapper {
 		this.forcePropagation = forcePropagation;
 		this.knownIndyBsm = knownIndyBsm;
 		this.propagatePrivate = propagatePrivate;
+		this.propagateUnmappedSuper = propagateUnmappedSuper;
 		this.propagateBridges = propagateBridges;
 		this.propagateRecordComponents = propagateRecordComponents;
 		this.removeFrames = removeFrames;
@@ -1479,6 +1485,7 @@ public class TinyRemapper {
 	final Set<String> forcePropagation;
 	final Set<String> knownIndyBsm;
 	final boolean propagatePrivate;
+	final boolean propagateUnmappedSuper;
 	final LinkedMethodPropagation propagateBridges;
 	final LinkedMethodPropagation propagateRecordComponents;
 	private final boolean removeFrames;

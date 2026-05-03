@@ -325,6 +325,9 @@ public final class ClassInstance implements TrClass {
 
 		if (dir == Direction.ANY || dir == Direction.UP || isVirtual && member != null && (member.access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) == 0) {
 			for (ClassInstance node : parents) {
+				if (!tr.propagateUnmappedSuper && !tr.classMap.containsKey(node.name)) {
+					continue;
+				}
 				if (visitedUp.add(node)) {
 					node.propagate(type, originatingCls, idSrc, nameDst,
 							Direction.UP, isVirtual, fromBridge,
